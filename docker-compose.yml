@@ -1,0 +1,19 @@
+version: '2'
+services:
+  backup:
+    build: .
+    image: niksite/docker-backup:latest
+    container_name: backup
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - backups:/backups
+  db:
+    image: postgres
+    container_name: pg
+    environment:
+      - POSTGRES_USER=django
+      - POSTGRES_PASSWORD=django
+      - POSTGRES_DB=django
+volumes:
+  backups:
+    external: true

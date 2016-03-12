@@ -1,0 +1,44 @@
+#!/usr/bin/env python
+
+import datetime
+import os
+import subprocess
+from docker import Client
+
+
+cli = Client(base_url='unix://var/run/docker.sock')
+
+
+def list_containers_by_env(name):
+    datas = []
+    for _id in [c['Id'] for c in cli.containers()]:
+        data = cli.inspect_container(_id)
+        if any([env.startswith(name) for env in data['Config']['Env']]):
+            datas.append({'id': _id,
+                          'name': data['Name'].strip('/'),
+                          'image': data['Image']})
+    return datas
+
+
+def run(cmd, data):
+    container = cli.create_container(
+        image=data['image'],
+        command=cmd,
+        host_config=cli.create_host_config(
+            network_mode='container:{}'.format(data['name']),
+            volumes_from=list_containers_by_env('NIKSITE_BACKUP')[0]['id']))
+    cli.start(container)
+    cli.wait(container)
+    print cli.logs(container)
+    cli.remove_container(container, v=True)
+
+
+for data in list_containers_by_env('PG_MAJOR'):
+    backup_file = '/backups/{}_{}_daily.db'.format(
+        data['name'], datetime.date.today())
+    if not os.path.exists('{}.bz2'.format(backup_file)):
+        print 'Backing up {}...'.format(data['name'])
+        run('pg_dumpall -h 127.0.0.1 -U postgres -f {}'.format(backup_file),
+            data)
+        subprocess.call(['bzip2', backup_file])
+subprocess.call('ls -l /backups', shell=True)
